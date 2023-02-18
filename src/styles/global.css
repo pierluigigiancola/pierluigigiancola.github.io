@@ -4,7 +4,7 @@
   License MIT: https://github.com/HermanMartinus/bearblog/blob/master/LICENSE.md
  */
 body {
-	font-family: Verdana, sans-serif;
+	font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
 	text-align: left;
 	background-color: #fff;
 	word-wrap: break-word;
@@ -12,6 +12,11 @@ body {
 	line-height: 1.5;
 	color: #444;
 	margin: 0;
+}
+
+* {
+	box-sizing: border-box;
+	animation-duration: 0.1s;
 }
 
 h1,
