@@ -80,3 +80,24 @@ blockquote {
 	margin: 0px;
 	font-style: italic;
 }
+
+:root {
+	--theme-code-bg: hsl(238, 100%, 5%);
+	/* --theme-glow-highlight: #3273dc; */
+	/* --theme-glow-diffuse: #3273dc; */
+	--theme-code-tabs: hsl(238, 100%, 15%);
+	--theme-code-text: hsl(0, 0%, 100%);
+	--padding-block: 1rem;
+	/* --theme-accent: #3273dc; */
+	--theme-code-mark-bg: hsl(225, 50%, 30%);
+	--theme-code-mark-border: hsl(225, 100%, 50%);
+	--theme-code-mark-text: hsl(225, 100%, 80%);
+	--theme-code-ins-bg: hsl(128, 50%, 30%);
+	--theme-code-ins-border: hsl(128, 100%, 50%);
+	--theme-code-ins-text: hsl(128, 100%, 80%);
+	--theme-code-del-bg: hsl(0, 50%, 30%);
+	--theme-code-del-border: hsl(0, 100%, 50%);
+	--theme-code-del-text: hsl(0, 100%, 80%);
+	--inline-marker-bg-color: hsl(0, 100%, 80%);
+	--theme-code-selection-bg: hsl(0, 100%, 80%);
+}
