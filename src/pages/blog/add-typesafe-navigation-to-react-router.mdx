@@ -1,0 +1,184 @@
+---
+layout: "../../layouts/Base.astro"
+---
+
+React router is the go to solution for routing a Single Page Application in React.
+In this series of articles we will build a Typescript layer on top of it to enable typesafe navigation.
+
+At the end of this first article we will have:
+
+- a single object that will hold all the routes of our application.
+- a type that will extract the path parameters from that object
+
+If you want to skip to the final source code of this article here's the [github repo](https://github.com/pierluigigiancola/blog-typesafe-react-router/tree/link-with-params)
+
+## Setup
+
+We will start with a simple react app which has 2 pages: RGB and HSL.
+
+We will use a Layout component that has a few links to navigate between the two pages.
+
+The page itself will be a simple div with a background color based on the parameters passed in the URL.
+
+```tsx title='./src/RGB.tsx'
+const RGB = () => {
+  const { red, green, blue } = useParams<{
+    red: string;
+    green: string;
+    blue: string;
+  }>();
+
+  return (
+    <div style={{ backgroundColor: `rgb(${red}, ${green}, ${blue})` }}>
+      <h1>RGB</h1>
+      <p>Red: {red}</p>
+      <p>Green: {green}</p>
+      <p>Blue: {blue}</p>
+    </div>
+  );
+};
+```
+
+We explicity pass the shape of the parameters when using the `useParams` hook. If we rename the path `rgb/:red/:green/:blue` to `rgb/:r/:g/:b` or if we add a parameter `:alpha` Typescript will not complain.
+
+## Goal
+
+Have a single source of truth for our routes and have the parameters for each route suggested based on the route itself.
+
+### The Routes Object
+
+This object will hold all the routes of our application.
+
+```tsx
+const Routes = {
+  RGB: "/rgb/:red/:green/:blue",
+  HSL: "/hsl/:hue/:saturation/:lightness",
+} as const;
+```
+
+We use `as const` to make the object a literal type. Which have the following effect on the type of `Routes`
+
+```tsx
+{
+  readonly RGB: "/rgb/:red/:green/:blue",
+  readonly HSL: "/hsl/:hue/:saturation/:lightness",
+}
+```
+
+Instead of
+
+```tsx
+{
+  RGB: string,
+  HSL: string,
+}
+```
+
+From the `Routes` object we extract `RouteLabels` which is the keys union type and `RoutePaths` which is the values union type.
+
+```tsx
+export type TRoutes = typeof Routes;
+
+export type RouteLabels = keyof TRoutes;
+
+export type RoutePaths = (typeof Routes)[RouteLabels];
+```
+
+And we use them to craft the type `RoutesProperty`.
+
+```tsx
+export type RoutesProperty = {
+  [K in RouteLabels]: {
+    path: K;
+    params: ParseRouteParams<(typeof Routes)[K]>;
+  };
+};
+```
+
+The type `ParseRouteParams` is the magic that will extract the parameters shapes from the path. Here it is:
+
+```tsx
+type ParseRouteParams<T extends string> =
+  T extends `${infer _}:${infer Param}/${infer Rest}`
+    ? { [K in Param | keyof ParseRouteParams<Rest>]: string }
+    : T extends `${infer _}:${infer Param}`
+    ? { [K in Param]: string }
+    : {};
+```
+
+Let's break down the first 3 lines (the others 2 lines follow are almost the same and are used to catch the last parameter):
+
+```tsx
+type ParseRouteParams<T extends string> =
+```
+
+This is a generic type that takes a string as input. The `T` will be the path.
+
+| For example `T` is `/rgb/:red/:green/:blue`.
+
+```tsx
+T extends `${infer _}:${infer Param}/${infer Rest}`
+```
+
+This is a conditional type that use the template literal syntax to match the string `T` with a pattern.
+
+| `T` equal `/rgb/:red/:green/:blue` will match. The type `_` is matched with `/rgb/`,`Param` with `red` and `Rest` with `:green/:blue`.
+
+```tsx
+{ [K in Param | keyof ParseRouteParams<Rest>]: string }
+```
+
+This is creating the final result. It's appending the `Param` to the result of the recursive call to `ParseRouteParams` with `Rest` as input.
+
+By changing the variables with the match above we get `{ [K in 'red' | keyof ParseRouteParams<':green/:blue'>]: string }` and I think it's easier to understand how this works.
+
+The last lines handle the case where there's only one parameter in the path.
+
+### Example Breakdown
+
+Imagine ParseRouteParams as a recursive function, here's the step by step "execution".
+
+```tsx
+// 1
+ParseRouteParams<"/rgb/:red/:green/:blue">;
+"/rgb/:red/:green/:blue" extends `${infer _}:${infer Param}/${infer Rest}` // true
+Param = "red"
+Rest = ":green/:blue"
+
+{ [K in "red" | keyof ParseRouteParams<":green/:blue">]: string }
+
+// 2
+ParseRouteParams<":green/:blue">;
+":green/:blue" extends `${infer _}:${infer Param}/${infer Rest}` // true
+Param = "green"
+Rest = ":blue"
+
+{ [K in "green" | keyof ParseRouteParams<":blue">]: string }
+
+// 3
+ParseRouteParams<":blue">;
+":blue" extends `${infer _}:${infer Param}/${infer Rest}` // false
+":blue" extends `${infer _}:${infer Param}` // true
+Param = "blue"
+
+{ [K in "blue"]: string } = { blue: string }
+
+// At this point the recursion stops and we start to resolve the types back
+
+// 2
+{ [K in "green" | keyof { blue: string }]: string }
+// keyof { blue: string } is resolved as "blue"
+{ [K in "green" | "blue"]: string } = { green: string, blue: string }
+
+// 1
+{ [K in "red" | keyof { green: string, blue: string }]: string }
+// keyof { green: string, blue: string } is resolved as "green" | "blue"
+{ [K in "red" | "green" | "blue"]: string } = { red: string, green: string, blue: string }
+
+```
+
+I hope that the example make it easier to understand how the recursive type works. At the end, it's just a recursion written in Typescript.
+
+## Next Steps
+
+In the next post we will use the `RoutesProperty` type to wrap the `Link` component from react router so that it will force us to pass the correct parameters based on the route.

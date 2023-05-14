@@ -1,0 +1,207 @@
+---
+layout: "../../layouts/Base.astro"
+---
+
+React router is the go to solution for routing a Single Page Application in React.
+In this series of articles we will build a layer on top of React Router that will make it more typesafe.
+
+At the end of this first article we will have:
+
+- a single object that will hold all the routes of our application.
+- a `Link` component with a `to` prop and a `params` prop. The `params` shape will be suggested based to the `to`.
+
+If you want to skip to the final source code of this article here's the [github repo](https://github.com/pierluigigiancola/blog-typesafe-react-router/tree/link-with-params)
+
+## Starting Point
+
+We will start with a simple react app which has 2 pages: RGB and HSL.
+
+We will use a Layout component that has a few links to navigate between the two pages.
+
+```tsx
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route path="/rgb/:red/:green/:blue" element={<RGB />} />
+          <Route path="/hsl/:hue/:saturation/:lightness" element={<HSL />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+As you can see, we have two routes, one for RGB and one for HSL color models. Each route has three parameters: red, green, blue for RGB and hue, saturation, lightness for HSL.
+
+The Layout component has few links to navigate between the two pages:
+
+```tsx
+return (
+  <div>
+    <nav>
+      <Link to="/rgb/255/0/0">RGB Red</Link>
+      <Link to="/rgb/0/255/0">RGB Green</Link>
+      <Link to="/rgb/0/0/255">RGB Blue</Link>
+      <Link to="/hsl/0/100/50">HSL Red</Link>
+      <Link to="/hsl/120/100/50">HSL Green</Link>
+      <Link to="/hsl/240/100/50">HSL Blue</Link>
+    </nav>
+    <Outlet />
+  </div>
+);
+```
+
+Now let's take a look at the RGB component:
+
+```tsx
+const RGB = () => {
+  const { red, green, blue } = useParams<{
+    red: string;
+    green: string;
+    blue: string;
+  }>();
+
+  return (
+    <div style={{ backgroundColor: `rgb(${red}, ${green}, ${blue})` }}>
+      <h1>RGB</h1>
+      <p>Red: {red}</p>
+      <p>Green: {green}</p>
+      <p>Blue: {blue}</p>
+    </div>
+  );
+};
+```
+
+As you can see, we are using the `useParams` hook to get the parameters from the URL. The `useParams` hook returns an object with the parameters as properties.
+
+## The Problem
+
+We explicity pass the shape of the parameters when using the `useParams` hook. This is fine but if we rename the path `rgb/:red/:green/:blue` to `rgb/:r/:g/:b` Typescript will not complain.
+
+Our goal is to make sure that the path and the parameters are always in sync.
+
+## The Setup Towards the Solution
+
+I started by create a Route object that will hold the paths.
+
+```tsx
+const Routes = {
+  RGB: "/rgb/:red/:green/:blue",
+  HSL: "/hsl/:hue/:saturation/:lightness",
+} as const;
+```
+
+The important catch here is the `as const` part. This will make the `Routes` object a literal type. This means that the type of `RGB` and `HSL` will be `'/rgb/:red/:green/:blue'` and `'/hsl/:hue/:saturation/:lightness'` respectively instead of `string`.
+
+From the `Routes` object I created two types that will be useful later:
+
+```tsx
+export type RouteLabels = keyof typeof Routes;
+
+export type RoutePaths = (typeof Routes)[RouteLabels];
+```
+
+Then I created a `Link` component that will wrap the `Link` component from React Router and will map the `to` prop to the key of `Routes` object.
+
+```tsx
+const Link = (
+  props: { to: RoutesLabel } & Omit<
+    React.ComponentProps<typeof ReactRouterLink>,
+    "to"
+  >
+) => {
+  return <ReactRouterLink {...props} />;
+};
+```
+
+So right now when using the `Link` component when passing the `to` prop Typescript will suggest either `RGB` or `HSL` as possible values.
+
+Replace it in the `Layout` component:
+
+```tsx
+return (
+  <div>
+    <nav>
+      - <Link to="/rgb/255/0/0">RGB Red</Link>+ <Link to="RGB">RGB Red</Link>-{" "}
+      <Link to="/rgb/0/255/0">RGB Green</Link>+ <Link to="RGB">RGB Green</Link>-{" "}
+      <Link to="/rgb/0/0/255">RGB Blue</Link>+ <Link to="RGB">RGB Blue</Link>-{" "}
+      <Link to="/hsl/0/100/50">HSL Red</Link>+ <Link to="HSL">HSL Red</Link>-{" "}
+      <Link to="/hsl/120/100/50">HSL Green</Link>+{" "}
+      <Link to="HSL">HSL Green</Link>-{" "}
+      <Link to="/hsl/240/100/50">HSL Blue</Link>+ <Link to="HSL">HSL Blue</Link>
+    </nav>
+    <Outlet />
+  </div>
+);
+```
+
+This will obviously not work, the link will send us straight to `/RGB` and `/HSL`.
+
+We can change the `Link` component to send us to the path defined in the `Routes` object:
+
+```tsx
+const Link = ({
+  to,
+  ...props
+}: { to: RouteLabels } & Omit<
+  React.ComponentProps<typeof ReactRouterLink>,
+  "to"
+>) => {
+-  return <ReactRouterLink {...props} />;
++  return <ReactRouterLink to={Routes[to]} {...props} />;
+};
+```
+
+Now the link with `to='RGB'` will send us to `/rgb/:red/:green/:blue`.
+
+To be able to replace the `:red/:green/:blue` with the actual values we need to add a `params` prop to the `Link` component.
+
+We also add a simple function `replaceParams` that will apply the `params` object to the path.
+
+```tsx
++ function replaceParams(path: string, params: Record<string, string>) {
++   return Object.keys(params).reduce(
++     (acc, key) => acc.replace(`:${key}`, params[key]),
++     path
++   );
++ }
+
+const Link = ({
+  to,
+  params = {},
+  ...props
+}: {
+  to: RouteLabels;
+  params?: Record<string, string>;
+} & Omit<React.ComponentProps<typeof ReactRouterLink>, "to">) => {
+-  return <ReactRouterLink to={Routes[to]} {...props} />;
++  return <ReactRouterLink to={replaceParams(Routes[to], params)} {...props} />;
+};
+```
+
+With this implementation we can now pass out `params` in the navigation section where the `Link` component is used.
+
+```tsx title="./src/Router.tsx" del={1} ins={2-5} ins="RGB Red"
+ <Link to="RGB">RGB Red</Link>
+ <Link to="RGB" params={{
+   red: '255',
+   green: '0',
+   blue: '0',
+ }}>RGB Red</Link>
+```
+
+We do the same change to each `Link` and we are done, the application is working as expected.
+
+## Wrap Up
+
+1. We created a `Routes` objects which is the single source of truth for the paths of the application.
+2. We created a `Link` component that will wrap the `Link` component from React Router and will map the `to` prop to the key of `Routes` object.
+3. We added a `params` prop to the `Link` component so that we can pass the parameters to the path using an object.
+
+## Next Steps
+
+The solutions as it is doesn't take advantage of Typescript. We can still pass incorrect parameters to the `Link` component.
+
+In the next post we will use some cool Typescript techniques to correctly type the `params` prop of the `Link` so that we can only pass the parameters that are defined in the path that we are passing to the `to` prop.
